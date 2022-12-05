@@ -34,6 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\libraries\Microsoft.PowerFx.Interpreter.Minit\Microsoft.PowerFx.Interpreter.Minit.csproj" />
     <ProjectReference Include="..\Microsoft.PowerFx.Core.Tests\Microsoft.PowerFx.Core.Tests.csproj" />
     <ProjectReference Include="..\..\libraries\Microsoft.PowerFx.Interpreter\Microsoft.PowerFx.Interpreter.csproj" />
     <ProjectReference Include="..\..\libraries\Microsoft.PowerFx.LanguageServerProtocol\Microsoft.PowerFx.LanguageServerProtocol.csproj" />
