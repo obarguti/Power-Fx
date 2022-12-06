@@ -27,7 +27,6 @@ namespace Microsoft.PowerFx.Interpreter.Minit
         
         internal readonly ReadOnlySymbolTable _builtinSymbols;
         internal readonly IList<ISymbolSlot> _slotAllEvents;
-        internal readonly IList<INodeHandler> _nodeHandlers;
 
         public MinitConverter()
         {
@@ -42,17 +41,6 @@ namespace Microsoft.PowerFx.Interpreter.Minit
             }
 
             _builtinSymbols = symTable;
-
-            _nodeHandlers = InitializeNodeHandlers();
-        }
-
-        private List<INodeHandler> InitializeNodeHandlers()
-        {
-            var nodeHandlers = new List<INodeHandler>();
-            var nodeHandlerType = typeof(INodeHandler);
-            nodeHandlerType.Assembly.GetTypes().Where(t => nodeHandlerType.IsAssignableFrom(t));
-
-            return nodeHandlers;
         }
 
         public string Convert(string inputFx)
@@ -95,6 +83,27 @@ namespace Microsoft.PowerFx.Interpreter.Minit
     // Walk an Power Fx tree and write out in target language 
     internal class MinitVisitor : IRNodeVisitor<VisitorResult, VisitorContext>
     {
+        internal readonly IList<INodeHandler> _nodeHandlers;
+
+        public MinitVisitor()
+        {
+            _nodeHandlers = InitializeNodeHandlers();
+        }
+
+        private List<INodeHandler> InitializeNodeHandlers()
+        {
+            var nodeHandlers = new List<INodeHandler>();
+            var nodeHandlerType = typeof(INodeHandler);
+            var types = nodeHandlerType.Assembly.GetTypes().Where(t => nodeHandlerType.IsAssignableFrom(t) && !t.IsInterface);
+
+            foreach (var type in types)
+            {
+                nodeHandlers.Add((INodeHandler)Activator.CreateInstance(type));
+            }
+
+            return nodeHandlers;
+        }
+
         private static bool Equals(ISymbolSlot slotA, ISymbolSlot slotB)
         {
             if (slotA == null && slotB == null)
@@ -148,39 +157,14 @@ namespace Microsoft.PowerFx.Interpreter.Minit
 
         public override VisitorResult Visit(CallNode node, VisitorContext context)
         {
-            var func = node.Function;
-            
-            // Sum(ProcessEvents, Duration())
-            if (func.Name != "Sum")
+            var handler = _nodeHandlers.FirstOrDefault(h => h.CanHandle(node, context));
+
+            if (handler == null)
             {
-                throw new NotImplementedException($"Function {func.Name} is not implemented.");
+                throw new NotImplementedException($"Unimplemented node type {node}");
             }
 
-            string arg0 = null;
-            if (node.Args[0] is ResolvedObjectNode node2)
-            {
-                if (node2.Value is ISymbolSlot slot)
-                {
-                    if (context._parent._slotAllEvents.Any(s => Equals(slot, s)))
-                    {
-                        arg0 = "ProcessEvents"; // Minit identifier. 
-                    }
-                }
-            } 
-
-            if (arg0 == null)
-            {
-                throw new NotImplementedException($"Unrecognized arg {node.Args[0].IRContext.SourceContext}");
-            }
-
-            var arg1 = node.Args[1].Accept(this, context);
-
-            var ret = new VisitorResult
-            {
-                 _miniExpr = $"Sum({arg0}, {arg1._miniExpr})"
-            };
-
-            return ret;
+            return handler.Handle(this, node, context);
         }
 
         public override VisitorResult Visit(BinaryOpNode node, VisitorContext context)
@@ -194,7 +178,6 @@ namespace Microsoft.PowerFx.Interpreter.Minit
             {
                 case UnaryOpKind.Negate:
                     // Handle Not
-
                     break;
                 default:
                     // Other
