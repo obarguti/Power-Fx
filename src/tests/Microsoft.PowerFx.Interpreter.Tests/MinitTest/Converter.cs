@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Microsoft.PowerFx.Core.IR;
 using Microsoft.PowerFx.Core.IR.Nodes;
@@ -15,8 +16,9 @@ namespace Microsoft.PowerFx.Minit
     {
         // Builtin Identifiers
         // PowerFx can have identifiers that represent filters. 
-        public readonly string[] AggregationScopes = { "Process", "View" };
-        public readonly string[] AggregationDimensions = { "Cases", "Events", "Edges" };
+        public static readonly string[] AggregationFunctions = { "GroupBy" };
+        public static readonly string[] AggregationScopes = { "Process", "View" };
+        public static readonly string[] AggregationDimensions = { "Cases", "Events", "Edges" };
 
         // By default, all events have 3 fields builtin. 
         // They can have additional custom fields too ("Attributes")
@@ -27,14 +29,30 @@ namespace Microsoft.PowerFx.Minit
             .Add("Activity", FormulaType.String);
         
         internal readonly ReadOnlySymbolTable _builtinSymbols;
-        internal readonly ISymbolSlot _slotAllEvents;
+        internal readonly IList<ISymbolSlot> _allAggregationFunctions;
+        internal readonly IList<ISymbolSlot> _allAggregationScopes;
+        internal readonly IList<ISymbolSlot> _allAggregationDimenstions;
 
         public Converter()
         {
             var symTable = new SymbolTable();
-            foreach(var scope in AggregationScopes)
+            _allAggregationFunctions = new List<ISymbolSlot>();
+            _allAggregationScopes = new List<ISymbolSlot>();
+            _allAggregationDimenstions = new List<ISymbolSlot>();
+
+            foreach (var function in AggregationFunctions)
             {
-                _slotAllEvents = symTable.AddVariable(scope, _eventType.ToTable());
+                _allAggregationFunctions.Add(symTable.AddVariable(function, _eventType.ToTable()));
+            }
+
+            foreach (var scope in AggregationScopes)
+            {
+                _allAggregationScopes.Add(symTable.AddVariable(scope, _eventType.ToTable()));
+            }
+
+            foreach (var dim in AggregationDimensions)
+            {
+                _allAggregationDimenstions.Add(symTable.AddVariable(dim, _eventType.ToTable()));
             }
 
             _builtinSymbols = symTable;
@@ -141,25 +159,59 @@ namespace Microsoft.PowerFx.Minit
                 throw new NotImplementedException($"Function {func.Name} is not implemented.");
             }
 
-            string arg0 = null;
-            if (node.Args[0] is ResolvedObjectNode aggregationScopeNode && aggregationScopeNode.Value is ISymbolSlot slot && Equals(slot, context._parent._slotAllEvents))
+            var arg0 = GetAggregationScopeArgument(node, context);
+            var arg1 = GetAggregationDimensionArgument(node, context);
+
+            var arg2 = node.Args[2].Accept(this, context);
+
+            var ret = new VisitorResult
             {
-                arg0 = "ProcessEvents"; // Minit identifier. 
-            } 
+                _miniExpr = $"Sum({arg0}, {arg2._miniExpr})"
+            };
+
+            return ret;
+        }
+
+        private static string GetAggregationScopeArgument(CallNode node, VisitorContext context)
+        {
+            string arg0 = null;
+            if (node.Args[0] is ResolvedObjectNode aggregationScopeNode && aggregationScopeNode.Value is ISymbolSlot slot)
+            {
+                var symbolSlot = context._parent._allAggregationScopes.SingleOrDefault(s => Equals(slot, s));
+
+                if (symbolSlot is not null and NameSymbol)
+                {
+                    arg0 = ((NameSymbol)symbolSlot).Name;
+                }
+            }
 
             if (arg0 == null)
             {
                 throw new NotImplementedException($"Unrecognized arg {node.Args[0].IRContext.SourceContext}");
             }
 
-            var arg1 = node.Args[1].Accept(this, context);
+            return arg0;
+        }
 
-            var ret = new VisitorResult
+        private static string GetAggregationDimensionArgument(CallNode node, VisitorContext context)
+        {
+            string arg1 = null;
+            if (node.Args[1] is ResolvedObjectNode aggregationDimensionNode && aggregationDimensionNode.Value is ISymbolSlot slot)
             {
-                 _miniExpr = $"Sum({arg0}, {arg1._miniExpr})"
-            };
+                var symbolSlot = context._parent._allAggregationDimenstions.SingleOrDefault(s => Equals(slot, s));
 
-            return ret;
+                if (symbolSlot is not null and NameSymbol)
+                {
+                    arg1 = ((NameSymbol)symbolSlot).Name;
+                }
+            }
+
+            if (arg1 == null)
+            {
+                throw new NotImplementedException($"Unrecognized arg {node.Args[1].IRContext.SourceContext}");
+            }
+
+            return arg1;
         }
 
         public override VisitorResult Visit(BinaryOpNode node, VisitorContext context)

@@ -9,14 +9,10 @@ namespace Microsoft.PowerFx.Minit
     public class TranslatorTests
     {
         [Theory]
-        [InlineData("Sum(ProcessEvents, Duration)", "Sum(ProcessEvents, Duration())", 480.0)]
-        public void Test1(string expressionFx, string expectedMinit, object scalarResult)
+        [InlineData("GroupBy(Process, Cases, Duration)", "Sum(ProcessEvents, Duration())")]
+        public void Test1(string expressionFx, string expectedMinit)
         {
             var converter = new Converter();
-
-            // run on power Fx
-            var result = Eval(expressionFx);
-            Assert.Equal(scalarResult, result.ToObject());
 
             var actual = converter.Convert(expressionFx);
 
@@ -30,8 +26,17 @@ namespace Microsoft.PowerFx.Minit
             var fxEvents = cache.Marshal(_sampleEvents);
             var engine = new RecalcEngine();
 
-            // Set builtin identifiers for the list. 
-            engine.UpdateVariable(Converter.AllEvents, fxEvents);
+            // Set builtin identifiers for the list.
+            foreach(var scope in Converter.AggregationScopes)
+            {
+                engine.UpdateVariable(scope, fxEvents);
+            }
+
+            foreach (var dimenstion in Converter.AggregationDimensions)
+            {
+                engine.UpdateVariable(dimenstion, fxEvents);
+            }
+
             var result = engine.Eval(expressionFx);
 
             return result;
