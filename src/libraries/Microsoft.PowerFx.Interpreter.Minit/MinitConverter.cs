@@ -176,9 +176,6 @@ namespace Microsoft.PowerFx.Interpreter.Minit
         {
             switch (node.Op)
             {
-                case UnaryOpKind.Negate:
-                    // Handle Not
-                    break;
                 default:
                     // Other
                     break;
