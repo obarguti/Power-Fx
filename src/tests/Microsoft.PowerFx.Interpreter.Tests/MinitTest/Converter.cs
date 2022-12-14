@@ -15,15 +15,11 @@ namespace Microsoft.PowerFx.Minit
     {
         // Builtin Identifiers
         // PowerFx can have identifiers that represent filters. 
-        // Refer to all events in the process 
-        public const string AllEvents = "ProcessEvents";
-
-        // Refer to all events in a given case. 
-        public const string CaseEvents = "CaseEvents";
+        public readonly string[] AggregationScopes = { "Process", "View" };
+        public readonly string[] AggregationDimensions = { "Cases", "Events", "Edges" };
 
         // By default, all events have 3 fields builtin. 
         // They can have additional custom fields too ("Attributes")
-
         internal readonly RecordType _eventType = RecordType.Empty()            
             .Add("Duration", FormulaType.Number) // Logically, (Start-End)
             .Add("Start", FormulaType.DateTime)
@@ -36,7 +32,10 @@ namespace Microsoft.PowerFx.Minit
         public Converter()
         {
             var symTable = new SymbolTable();
-            _slotAllEvents = symTable.AddVariable(AllEvents, _eventType.ToTable());
+            foreach(var scope in AggregationScopes)
+            {
+                _slotAllEvents = symTable.AddVariable(scope, _eventType.ToTable());
+            }
 
             _builtinSymbols = symTable;
         }
@@ -135,23 +134,17 @@ namespace Microsoft.PowerFx.Minit
         public override VisitorResult Visit(CallNode node, VisitorContext context)
         {
             var func = node.Function;
-            
-            // Sum(ProcessEvents, Duration())
-            if (func.Name != "Sum")
+
+            // GroupBy(<Process|View>, <Cases|Events|Edges>, <Max|Min|Count|...etc>(<Formula>))
+            if (func.Name != "GroupBy")
             {
                 throw new NotImplementedException($"Function {func.Name} is not implemented.");
             }
 
             string arg0 = null;
-            if (node.Args[0] is ResolvedObjectNode node2)
+            if (node.Args[0] is ResolvedObjectNode aggregationScopeNode && aggregationScopeNode.Value is ISymbolSlot slot && Equals(slot, context._parent._slotAllEvents))
             {
-                if (node2.Value is ISymbolSlot slot)
-                {
-                    if (Equals(slot, context._parent._slotAllEvents))
-                    {
-                        arg0 = "ProcessEvents"; // Minit identifier. 
-                    }
-                }
+                arg0 = "ProcessEvents"; // Minit identifier. 
             } 
 
             if (arg0 == null)
